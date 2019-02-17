@@ -8,7 +8,7 @@ url_stem <- "https://www.fhwa.dot.gov/"
 web_text <- read_html(paste0(url_stem, "policyinformation/travel_monitoring/tvt.cfm"))
 
 url_monthly <- web_text %>%
-  html_nodes(xpath = '//*[@class="tvt"]/table') %>%  # select all tables under div[@class="tvt"]
+  html_nodes(xpath = '//*[@class="tvt" or @class="container"]/table') %>%  # select all tables under div[@class="tvt"]
   html_nodes("a") %>% html_attr("href")  # grab url references
 #url_monthly 
 
@@ -33,6 +33,8 @@ url_change3_index <- str_which(url_monthly, "03dec")
 # create empty table
 df_all <- data.frame(
   source = character(),
+  year = numeric(),
+  month = character(),
   state = character(),
   current_stations = numeric(),
   current_miles = numeric(),
@@ -47,17 +49,22 @@ for (i in 1:(url_change3_index-1)) {
   if (i < url_change2_index) {
     url_i <- paste0(url_stem, month_i, "page6.cfm")
     pg <- read_html(url_i) 
-    tbl <- pg %>% html_node(xpath = '//table[contains(@class,"datatable")]') %>% html_table(fill= TRUE)
+    tbl <- pg %>% html_node(xpath = '//table[contains(@class,"datatable")]') %>% html_table(fill=TRUE)
   } else if (i == url_change2_index) {
     url_i <- paste0(url_stem, month_i, "page6.htm")
     pg <- read_html(url_i) 
-    tbl <- pg %>% html_node(xpath = '/html/body/table[2]') %>% html_table(fill= TRUE)
+    tbl <- pg %>% html_node(xpath = '/html/body/table[2]') %>% html_table(fill=TRUE)
+    tbl <- tbl %>% select(X1:X9)
   } else {
     url_i <- paste0(url_stem, month_i, "page6.htm")
     pg <- read_html(url_i) 
-    tbl <- pg %>% html_node(xpath = '//table[contains(@id,"Table1")]') %>% html_table(fill= TRUE)
+    tbl <- pg %>% html_node(xpath = '//table[contains(@id,"Table1")]') %>% html_table(fill=TRUE)
   }
 
+  while (ncol(tbl) > 9) {
+    tbl <- tbl[-c(1)]  # drop extra columns at the beginning
+  }
+  
   tbl_clean <- tbl[, c(1:3,6:7)]  # select curr and prior month [number of stations] and [vehicle miles]
   names(tbl_clean) <- c("state", "current_stations", "current_miles", "prior_stations", "prior_miles")
   
@@ -76,13 +83,15 @@ for (i in 1:(url_change3_index-1)) {
            !str_detect(tolower(state), "total"),
            !str_detect(tolower(state), "region"),
            str_detect(tolower(state), "[a-z]")) %>%
-    mutate(source = str_extract(month_i, "[0-9]{2}[a-z]{3}tvt"))  # year month tvt
+    mutate(source = str_extract(month_i, "[0-9]{2}[a-z]{3}tvt"),  # year month tvt
+           year = as.numeric(str_sub(source, 1, 2)) + 2000,  # year
+           month = str_sub(source, 3, 5))
   
   # append data
   df_all <- bind_rows(df_all, tbl_clean)
   
   # print progress
-  print(paste0("Pulled in: ", month_i))
+  print(paste0("Pulled in ", nrow(tbl_clean), " row(s) for: ", month_i))
   flush.console()
 }
 
